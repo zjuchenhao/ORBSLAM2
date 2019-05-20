@@ -8,6 +8,10 @@
 
 #include "System.h"
 
+#include<time.h>
+#include<eigen3/Eigen/Core>
+#include<eigen3/Eigen/Eigen>
+
 using namespace std;
 
 void LoadImages(const string &strSequence, vector<string> &vstrImageFilenames,
@@ -39,9 +43,15 @@ int main(int argc, char **argv)
     cout << "Images in the sequence: " << nImages << endl
          << endl;
 
+    time_t t = time(NULL);
+    char tmp[64];
+    strftime(tmp, sizeof(tmp), "%Y%m%d%H%M%S.txt", localtime(&t));
+    puts(tmp);
+    ofstream traj_file(tmp);
+
     // Main loop
     cv::Mat im;
-    for (int ni = nStart; ni < nImages; ni++)
+    for (int ni = nStart; ni < nImages; ni+=2)
     {
         // Read image from file
         im = cv::imread(path + '/' + to_string(ni) + ".jpg", CV_LOAD_IMAGE_UNCHANGED);
@@ -60,7 +70,7 @@ int main(int argc, char **argv)
 #endif
 
         // Pass the image to the SLAM system
-        SLAM.TrackMonocular(im, ni);
+        cv::Mat Tcw = SLAM.TrackMonocular(im, ni);
 
 #ifdef COMPILEDWITHC11
         std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
@@ -72,8 +82,45 @@ int main(int argc, char **argv)
 
         vTimesTrack.push_back(ttrack);
 
-        usleep((0.25)*1e6);
+        if(!Tcw.empty()){
+                Eigen::Matrix4d T_c_w_;
+                T_c_w_ << Tcw.at<float>(0,0),
+                        Tcw.at<float>(0,1),
+                        Tcw.at<float>(0,2),
+                        Tcw.at<float>(0,3),
+                        Tcw.at<float>(1,0),
+                        Tcw.at<float>(1,1),
+                        Tcw.at<float>(1,2),
+                        Tcw.at<float>(1,3),
+                        Tcw.at<float>(2,0),
+                        Tcw.at<float>(2,1),
+                        Tcw.at<float>(2,2),
+                        Tcw.at<float>(2,3),
+                        Tcw.at<float>(3,0),
+                        Tcw.at<float>(3,1),
+                        Tcw.at<float>(3,2),
+                        Tcw.at<float>(3,3);
+                Eigen::Matrix4d pose_m = T_c_w_.inverse();
+                traj_file << pose_m(0, 0) << ' '
+                        << pose_m(0, 1) << ' '
+                        << pose_m(0, 2) << ' '
+                        << pose_m(0, 3) << ' '
+                        << pose_m(1, 0) << ' '
+                        << pose_m(1, 1) << ' '
+                        << pose_m(1, 2) << ' '
+                        << pose_m(1, 3) << ' '
+                        << pose_m(2, 0) << ' '
+                        << pose_m(2, 1) << ' '
+                        << pose_m(2, 2) << ' '
+                        << pose_m(2, 3) << '\n';
+        }
+
+
+
+        // usleep((0.25)*1e6);
     }
+
+    traj_file.close();
 
     // Stop all threads
     SLAM.Shutdown();
