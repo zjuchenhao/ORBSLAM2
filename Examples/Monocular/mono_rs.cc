@@ -19,28 +19,30 @@ void LoadImages(const string &strSequence, vector<string> &vstrImageFilenames,
 
 int main(int argc, char **argv)
 {
-    if (argc != 6)
+    if (argc != 7)
     {
         cerr << endl
-             << "Usage: ./mono_rs [1]path_to_vocabulary [2]path_to_settings [3]path_to_sequence [4]number_of_image [5]start_number_of_image." << endl;
+             << "Usage: ./mono_rs [1]path_to_vocabulary [2]path_to_settings [3]path_to_sequence [4]start_number_of_image [5]end_number_of_image [6]skip_number_of_image." << endl;
         return 1;
     }
 
     string path = string(argv[3]);
-    int nImages = atoi((argv[4]));
-    int nStart = atoi(argv[5]);
+    int nStart = atoi(argv[4]);
+    int nEnd = atoi(argv[5]);
+    int nSkip = atoi(argv[6]);
+    int nImages = nEnd - nStart;
 
     // Create SLAM system. It initializes all system threads and gets ready to process frames.
     ORB_SLAM2::System SLAM(argv[1], argv[2], ORB_SLAM2::System::MONOCULAR, true);
 
     // Vector for tracking time statistics
     vector<float> vTimesTrack;
-    vTimesTrack.resize(nImages - nStart);
+    vTimesTrack.resize(nImages);
 
     cout << endl
          << "-------" << endl;
     cout << "Start processing sequence ..." << endl;
-    cout << "Images in the sequence: " << nImages << endl
+    cout << "Images in the sequence: " << nEnd - nStart << endl
          << endl;
 
     time_t t = time(NULL);
@@ -51,20 +53,30 @@ int main(int argc, char **argv)
 
     // Main loop
     cv::Mat im;
-    for (int ni = nStart; ni < nImages; ni+=2)
+    double sum_t = 0;
+    double count = 0;
+    for (int ni = nStart; ni < nEnd; ni+=nSkip)
     {
+        char tmp[10];
+        sprintf(tmp, "%05d.png", ni);
+        // sprintf(tmp, "%d", ni);
+
         // Read image from file
-        im = cv::imread(path + '/' + to_string(ni) + ".jpg", CV_LOAD_IMAGE_UNCHANGED);
+        std::string fileName = path + "/" + string(tmp);
+        im = cv::imread(fileName, CV_LOAD_IMAGE_UNCHANGED);
 
         if (im.empty())
         {
             cerr << endl
-                 << "Failed to load image at: " << path + '/' + to_string(ni) + ".jpg" << endl;
+                 << "Failed to load image at: " << fileName << endl;
             return 1;
         }
 
+        // cv::resize(im, im, cv::Size(), 0.5, 0.5);
+
 #ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+        // std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+        auto start = std::chrono::system_clock::now();
 #else
         std::chrono::monotonic_clock::time_point t1 = std::chrono::monotonic_clock::now();
 #endif
@@ -73,13 +85,17 @@ int main(int argc, char **argv)
         cv::Mat Tcw = SLAM.TrackMonocular(im, ni);
 
 #ifdef COMPILEDWITHC11
-        std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+        // std::chrono::steady_clock::time_point t2 = std::chrono::steady_clock::now();
+        auto end = std::chrono::system_clock::now();
 #else
         std::chrono::monotonic_clock::time_point t2 = std::chrono::monotonic_clock::now();
 #endif
 
-        double ttrack = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1).count();
+        // double ttrack = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1).count();
+        double ttrack = std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
 
+        sum_t += ttrack;
+        count++;
         vTimesTrack.push_back(ttrack);
 
         if(!Tcw.empty()){
@@ -113,11 +129,26 @@ int main(int argc, char **argv)
                         << pose_m(2, 1) << ' '
                         << pose_m(2, 2) << ' '
                         << pose_m(2, 3) << '\n';
+        }else
+        {
+                traj_file << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << ' '
+                          << 0.0 << '\n';
         }
+        
 
 
 
-        // usleep((0.25)*1e6);
+        usleep(2e5);
     }
 
     traj_file.close();
@@ -136,6 +167,8 @@ int main(int argc, char **argv)
          << endl;
     cout << "median tracking time: " << vTimesTrack[nImages / 2] << endl;
     cout << "mean tracking time: " << totaltime / nImages << endl;
+
+    cout << "mean FPS: " << 1e6/(sum_t/count) << endl;
 
     // Save camera trajectory
     SLAM.SaveKeyFrameTrajectoryTUM("KeyFrameTrajectory.txt");
