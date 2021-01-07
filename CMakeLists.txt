@@ -111,6 +111,10 @@ add_executable(mono_euroc
 Examples/Monocular/mono_euroc.cc)
 target_link_libraries(mono_euroc ${PROJECT_NAME})
 
-add_executable(mono_rs
-Examples/Monocular/mono_rs.cc)
-target_link_libraries(mono_rs ${PROJECT_NAME})
+add_executable(mono_pinhole
+Examples/Monocular/mono_pinhole.cc)
+target_link_libraries(mono_pinhole ${PROJECT_NAME})
+
+add_executable(mono_pinhole_timestamp
+Examples/Monocular/mono_pinhole_timestamp.cc)
+target_link_libraries(mono_pinhole_timestamp ${PROJECT_NAME})
